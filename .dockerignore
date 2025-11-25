@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Logs
+logs/
+*.log
+
+# Data (don't include in Docker image)
+data/uploads/
+data/videos/
+data/database/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests
+tests/
+.pytest_cache/
+
+# Frontend
+node_modules/
+frontend/
