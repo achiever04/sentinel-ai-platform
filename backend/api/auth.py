@@ -58,9 +58,9 @@ async def login(
     )
     
     return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserResponse.from_orm(user)
+    access_token=access_token,
+    token_type="bearer",
+    user=UserResponse.model_validate(user)  # <--- FIXED
     )
 
 @router.get("/me", response_model=UserResponse)

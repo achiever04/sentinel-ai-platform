@@ -10,6 +10,9 @@ class FederatedNode(Base):
     """Federated learning node/site"""
     __tablename__ = "federated_nodes"
     
+    # Add this at the top of the class
+    model_config = {"protected_namespaces": ()}  # FIX PYDANTIC WARNING
+    
     id = Column(Integer, primary_key=True, index=True)
     node_id = Column(String(50), unique=True, index=True)
     name = Column(String(100))
@@ -29,6 +32,8 @@ class FederatedNode(Base):
 class FederatedRound(Base):
     """Federated learning training round"""
     __tablename__ = "federated_rounds"
+
+    model_config = {"protected_namespaces": ()}
     
     id = Column(Integer, primary_key=True, index=True)
     round_number = Column(Integer, index=True)

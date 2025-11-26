@@ -3,7 +3,7 @@
 echo "Starting Sentinel AI Backend..."
 
 # Activate virtual environment
-source .venv/bin/activate
+source venv/bin/activate
 
 # Check Redis
 if ! pgrep -x "redis-server" > /dev/null; then
