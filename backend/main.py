@@ -1,3 +1,7 @@
+# ============================================================================
+# backend/main.py - UPDATED with WebSocket support
+# ============================================================================
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -5,8 +9,9 @@ from backend.database import init_db
 from backend.config import get_settings
 from backend.utils.logger import setup_logger
 
-# Import ALL API routers
+# Import ALL API routers INCLUDING STREAM
 from backend.api import auth, cameras, persons, watchlist, alerts, analytics, federated, uploads
+from backend.api import stream  # NEW - WebSocket streaming
 
 settings = get_settings()
 logger = setup_logger(__name__)
@@ -18,7 +23,7 @@ app = FastAPI(
     description="AI-Powered Multi-Camera Safety & Intelligence Platform (Academic Use Only)"
 )
 
-# CORS middleware
+# CORS middleware - UPDATED to allow WebSocket
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS.split(','),
@@ -52,7 +57,7 @@ async def shutdown_event():
     for camera_id in list(CameraService.active_streams.keys()):
         CameraService.stop_stream(camera_id)
 
-# Include ALL routers
+# Include ALL routers INCLUDING STREAM
 app.include_router(auth.router)
 app.include_router(cameras.router)
 app.include_router(persons.router)
@@ -61,6 +66,7 @@ app.include_router(alerts.router)
 app.include_router(analytics.router)
 app.include_router(federated.router)
 app.include_router(uploads.router)
+app.include_router(stream.router)  # NEW - WebSocket streaming
 
 # Health check endpoint
 @app.get("/health")
