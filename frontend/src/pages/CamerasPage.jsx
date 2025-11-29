@@ -1,5 +1,5 @@
 // ============================================================================
-// frontend/src/pages/CamerasPage.jsx - COMPLETE Camera Management
+// frontend/src/pages/CamerasPage.jsx - FIXED with default export
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -11,7 +11,7 @@ import CameraCard from '../components/cameras/CameraCard';
 import { useCameraStore } from '../store/cameraStore';
 import { Plus, Video } from 'lucide-react';
 
-export default function CamerasPage({ role = 'admin' }) {
+function CamerasPage({ role = 'admin' }) {
   const { cameras, fetchCameras, loading } = useCameraStore();
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -253,3 +253,6 @@ function AddCameraForm({ onSuccess, onCancel }) {
     </form>
   );
 }
+
+// CRITICAL: Default export
+export default CamerasPage;

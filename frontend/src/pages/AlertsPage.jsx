@@ -1,8 +1,10 @@
 // ============================================================================
-// frontend/src/pages/AlertsPage.jsx - COMPLETE Alerts Management
+// frontend/src/pages/AlertsPage.jsx - FIXED with default export
 // ============================================================================
 
-export function AlertsPage({ role = 'operator' }) {
+import AlertPanel from '../components/alerts/AlertPanel';
+
+function AlertsPage({ role = 'operator' }) {
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar role={role} />
@@ -16,4 +18,5 @@ export function AlertsPage({ role = 'operator' }) {
   );
 }
 
-import AlertPanel from '../components/alerts/AlertPanel';
+// CRITICAL: Default export
+export default AlertsPage;

@@ -10,11 +10,11 @@ import base64
 import asyncio
 import json
 from typing import Dict
+from datetime import datetime
 from backend.database import get_db
 from backend.services.camera_service import CameraService
 from backend.processors.frame_processor import FrameProcessor
 from backend.utils.logger import setup_logger
-from datetime import datetime
 
 router = APIRouter(prefix="/api/stream", tags=["Streaming"])
 logger = setup_logger(__name__)
@@ -37,7 +37,8 @@ class ConnectionManager:
 
     def disconnect(self, websocket: WebSocket, camera_id: int):
         if camera_id in self.active_connections:
-            self.active_connections[camera_id].remove(websocket)
+            if websocket in self.active_connections[camera_id]:
+                self.active_connections[camera_id].remove(websocket)
             if not self.active_connections[camera_id]:
                 del self.active_connections[camera_id]
         logger.info(f"WebSocket disconnected for camera {camera_id}")
@@ -74,6 +75,8 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: int, db: Session =
         await websocket.close(code=1008, reason="Camera not found")
         return
     
+    cap = None
+    
     try:
         # Initialize video capture
         if camera.source_type == 'webcam':
@@ -100,6 +103,8 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: int, db: Session =
                     await websocket.send_text("pong")
             except asyncio.TimeoutError:
                 pass
+            except:
+                break
             
             # Read frame
             ret, frame = cap.read()
@@ -117,29 +122,35 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: int, db: Session =
             # Process frame every 3rd frame to save CPU
             detections = []
             if frame_count % 3 == 0:
-                results = frame_processor.process_frame(
-                    frame,
-                    camera_id,
-                    frame_count
-                )
-                detections = results.get('detections', [])
-                
-                # Draw detections on frame
-                frame = frame_processor.draw_detections(frame, detections)
+                try:
+                    results = frame_processor.process_frame(
+                        frame,
+                        camera_id,
+                        frame_count
+                    )
+                    detections = results.get('detections', [])
+                    
+                    # Draw detections on frame
+                    frame = frame_processor.draw_detections(frame, detections)
+                except Exception as e:
+                    logger.error(f"Error processing frame: {e}")
             
             # Encode frame as JPEG
             _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             frame_base64 = base64.b64encode(buffer).decode('utf-8')
             
             # Send frame and detection data
-            await websocket.send_json({
-                'type': 'frame',
-                'camera_id': camera_id,
-                'frame': frame_base64,
-                'frame_count': frame_count,
-                'detections': len(detections),
-                'detection_data': detections[:5]  # Send only first 5 detections to save bandwidth
-            })
+            try:
+                await websocket.send_json({
+                    'type': 'frame',
+                    'camera_id': camera_id,
+                    'frame': frame_base64,
+                    'frame_count': frame_count,
+                    'detections': len(detections),
+                    'detection_data': detections[:5]  # Send only first 5 detections
+                })
+            except:
+                break
             
             frame_count += 1
             
@@ -151,7 +162,7 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: int, db: Session =
     except Exception as e:
         logger.error(f"Error in WebSocket stream: {e}")
     finally:
-        if 'cap' in locals():
+        if cap is not None:
             cap.release()
         manager.disconnect(websocket, camera_id)
 

@@ -1,9 +1,9 @@
 // ============================================================================
-// frontend/src/components/common/Sidebar.jsx
+// frontend/src/components/common/Sidebar.jsx - FIXED with stable role
 // ============================================================================
 
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Video,
@@ -16,9 +16,13 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
-export default function Sidebar({ role = 'operator' }) {
+export default function Sidebar({ role }) {
   const location = useLocation();
-  const logout = useAuthStore(state => state.logout);
+  const navigate = useNavigate();
+  const { logout, user } = useAuthStore();
+  
+  // CRITICAL: Use prop role first, fallback to user role
+  const currentRole = role || user?.role || 'operator';
   
   const adminLinks = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -38,9 +42,15 @@ export default function Sidebar({ role = 'operator' }) {
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   ];
   
-  const links = role === 'admin' ? adminLinks : operatorLinks;
+  // CRITICAL: Use currentRole to determine links
+  const links = currentRole === 'admin' ? adminLinks : operatorLinks;
   
   const isActive = (href) => location.pathname === href;
+  
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
   
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-white w-64">
@@ -48,6 +58,14 @@ export default function Sidebar({ role = 'operator' }) {
       <div className="flex items-center justify-center h-16 border-b border-gray-700">
         <Shield className="w-8 h-8 text-blue-500" />
         <span className="ml-2 text-xl font-bold">Sentinel AI</span>
+      </div>
+      
+      {/* Role Badge */}
+      <div className="px-6 py-3 bg-gray-800">
+        <div className="text-xs text-gray-400">Logged in as</div>
+        <div className="text-sm font-medium">
+          {currentRole === 'admin' ? 'Administrator' : 'Operator'}
+        </div>
       </div>
       
       {/* Navigation */}
@@ -71,7 +89,7 @@ export default function Sidebar({ role = 'operator' }) {
       {/* Logout */}
       <div className="border-t border-gray-700">
         <button
-          onClick={logout}
+          onClick={handleLogout}
           className="flex items-center w-full px-6 py-3 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
         >
           <LogOut className="w-5 h-5 mr-3" />

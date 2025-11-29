@@ -1,5 +1,5 @@
 # ============================================================================
-# backend/processors/frame_processor.py - Frame Processing Pipeline
+# backend/processors/frame_processor.py - FIXED VERSION
 # ============================================================================
 
 import cv2
@@ -89,9 +89,15 @@ class FrameProcessor:
             if face_region.size == 0:
                 continue
             
+            # FIXED: Store bbox as dict with proper integer values
             detection = {
-                'bbox': {'top': top, 'right': right, 'bottom': bottom, 'left': left},
-                'confidence': face_det.confidence
+                'bbox': {
+                    'top': int(top),
+                    'right': int(right), 
+                    'bottom': int(bottom),
+                    'left': int(left)
+                },
+                'confidence': float(face_det.confidence)
             }
             
             # Step 3: Extract face embedding
@@ -132,11 +138,18 @@ class FrameProcessor:
         # Step 8: Analyze behavior for each tracked person
         for det in tracked_detections:
             if 'person_id' in det:
+                # FIXED: Extract bbox values properly
+                bbox_dict = det['bbox']
+                bbox_tuple = (
+                    bbox_dict['left'],
+                    bbox_dict['top'],
+                    bbox_dict['right'] - bbox_dict['left'],  # width
+                    bbox_dict['bottom'] - bbox_dict['top']   # height
+                )
+                
                 behavior = self.behavior_analyzer.analyze_behavior(
                     det['person_id'],
-                    (det['bbox']['left'], det['bbox']['top'],
-                     det['bbox']['right'] - det['bbox']['left'],
-                     det['bbox']['bottom'] - det['bbox']['top']),
+                    bbox_tuple,
                     timestamp.timestamp()
                 )
                 det['behavior'] = behavior
@@ -164,7 +177,16 @@ class FrameProcessor:
         overlay = frame.copy()
         
         for det in detections:
-            bbox = det['bbox']
+            # FIXED: Handle both dict and tuple bbox formats
+            if isinstance(det['bbox'], dict):
+                bbox = det['bbox']
+                top = bbox['top']
+                right = bbox['right']
+                bottom = bbox['bottom']
+                left = bbox['left']
+            else:
+                # Old tuple format
+                top, right, bottom, left = det['bbox']
             
             # Draw bounding box
             color = (0, 255, 0)  # Green default
@@ -173,8 +195,8 @@ class FrameProcessor:
             
             cv2.rectangle(
                 overlay,
-                (bbox['left'], bbox['top']),
-                (bbox['right'], bbox['bottom']),
+                (left, top),
+                (right, bottom),
                 color,
                 2
             )
@@ -184,7 +206,7 @@ class FrameProcessor:
             cv2.putText(
                 overlay,
                 person_id,
-                (bbox['left'], bbox['top'] - 10),
+                (left, top - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
                 color,
@@ -197,7 +219,7 @@ class FrameProcessor:
                 cv2.putText(
                     overlay,
                     emotion,
-                    (bbox['left'], bbox['bottom'] + 20),
+                    (left, bottom + 20),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.4,
                     (255, 255, 255),
@@ -205,12 +227,12 @@ class FrameProcessor:
                 )
             
             # Draw mask/helmet indicators
-            y_offset = bbox['top'] - 30
+            y_offset = top - 30
             if det.get('is_masked'):
-                cv2.putText(overlay, "MASKED", (bbox['left'], y_offset),
+                cv2.putText(overlay, "MASKED", (left, y_offset),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 255), 1)
             if det.get('is_helmeted'):
-                cv2.putText(overlay, "HELMET", (bbox['left'], y_offset - 15),
+                cv2.putText(overlay, "HELMET", (left, y_offset - 15),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
         
         return overlay

@@ -1,12 +1,12 @@
 // ============================================================================
-// frontend/src/App.jsx - FIXED with ALL Routes
+// frontend/src/App.jsx - FIXED VERSION with Safe Imports
 // ============================================================================
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 
-// Existing pages
+// EXISTING pages (these work)
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
 import OperatorDashboard from './pages/OperatorDashboard';
@@ -16,9 +16,16 @@ import FederatedPage from './pages/FederatedPage';
 import SettingsPage from './pages/SettingsPage';
 import WatchlistPage from './pages/WatchlistPage';
 
-// NEW PAGES - Create these next
-import CamerasPage from './pages/CamerasPage';
-import AlertsPage from './pages/AlertsPage';
+// NEW pages - with fallback if they don't exist yet
+let CamerasPage, AlertsPage;
+try {
+  CamerasPage = require('./pages/CamerasPage').default;
+  AlertsPage = require('./pages/AlertsPage').default;
+} catch (e) {
+  // Fallback components if files don't exist
+  CamerasPage = () => <div>Cameras page coming soon...</div>;
+  AlertsPage = () => <div>Alerts page coming soon...</div>;
+}
 
 function PrivateRoute({ children, adminOnly = false }) {
   const { isAuthenticated, user } = useAuthStore();
@@ -130,9 +137,6 @@ function App() {
           
           {/* Redirect root to login */}
           <Route path="/" element={<Navigate to="/login" replace />} />
-          
-          {/* Catch all - redirect to dashboard based on role */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </div>
     </Router>
