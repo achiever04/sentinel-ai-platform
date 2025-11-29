@@ -1,7 +1,9 @@
 // ============================================================================
-// frontend/src/pages/AlertsPage.jsx - FIXED with default export
+// frontend/src/pages/AlertsPage.jsx - FINAL FIXED VERSION
 // ============================================================================
 
+import React from 'react';
+import Sidebar from '../components/common/Sidebar';
 import AlertPanel from '../components/alerts/AlertPanel';
 
 function AlertsPage({ role = 'operator' }) {
@@ -18,5 +20,4 @@ function AlertsPage({ role = 'operator' }) {
   );
 }
 
-// CRITICAL: Default export
 export default AlertsPage;

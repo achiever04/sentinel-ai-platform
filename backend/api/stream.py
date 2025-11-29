@@ -1,17 +1,15 @@
 # ============================================================================
-# backend/api/stream.py - WebSocket Camera Streaming
+# backend/api/stream.py - WebSocket Camera Streaming - FIXED VERSION
 # ============================================================================
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import cv2
 import numpy as np
 import base64
 import asyncio
-import json
-from typing import Dict
 from datetime import datetime
-from backend.database import get_db
+from backend.database import SessionLocal
+from backend.models.camera import Camera
 from backend.services.camera_service import CameraService
 from backend.processors.frame_processor import FrameProcessor
 from backend.utils.logger import setup_logger
@@ -19,180 +17,142 @@ from backend.utils.logger import setup_logger
 router = APIRouter(prefix="/api/stream", tags=["Streaming"])
 logger = setup_logger(__name__)
 
-# Active WebSocket connections: camera_id -> list of WebSocket connections
-active_connections: Dict[int, list] = {}
 frame_processor = FrameProcessor()
 
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[int, list] = {}
-
-    async def connect(self, websocket: WebSocket, camera_id: int):
-        await websocket.accept()
-        if camera_id not in self.active_connections:
-            self.active_connections[camera_id] = []
-        self.active_connections[camera_id].append(websocket)
-        logger.info(f"WebSocket connected for camera {camera_id}")
-
-    def disconnect(self, websocket: WebSocket, camera_id: int):
-        if camera_id in self.active_connections:
-            if websocket in self.active_connections[camera_id]:
-                self.active_connections[camera_id].remove(websocket)
-            if not self.active_connections[camera_id]:
-                del self.active_connections[camera_id]
-        logger.info(f"WebSocket disconnected for camera {camera_id}")
-
-    async def broadcast(self, camera_id: int, message: dict):
-        if camera_id in self.active_connections:
-            dead_connections = []
-            for connection in self.active_connections[camera_id]:
-                try:
-                    await connection.send_json(message)
-                except:
-                    dead_connections.append(connection)
-            
-            # Remove dead connections
-            for conn in dead_connections:
-                self.disconnect(conn, camera_id)
-
-
-manager = ConnectionManager()
-
-
 @router.websocket("/ws/{camera_id}")
-async def websocket_endpoint(websocket: WebSocket, camera_id: int, db: Session = Depends(get_db)):
+async def websocket_endpoint(websocket: WebSocket, camera_id: int):
     """
     WebSocket endpoint for real-time camera streaming
     
-    Sends frames as base64-encoded JPEG images with detection data
+    FIXED: Removed Depends(get_db) - WebSockets don't support it
+    Uses manual SessionLocal() instead
     """
-    await manager.connect(websocket, camera_id)
+    await websocket.accept()
+    logger.info(f"WebSocket connected for camera {camera_id}")
     
-    # Get camera from database
-    camera = CameraService.get_camera(db, camera_id)
-    if not camera:
-        await websocket.close(code=1008, reason="Camera not found")
-        return
-    
-    cap = None
+    # Manual database session (WebSockets can't use Depends)
+    db = SessionLocal()
     
     try:
-        # Initialize video capture
-        if camera.source_type == 'webcam':
-            cap = cv2.VideoCapture(int(camera.source_url))
-        elif camera.source_type == 'rtsp':
-            cap = cv2.VideoCapture(camera.source_url)
-        elif camera.source_type == 'file':
-            cap = cv2.VideoCapture(camera.source_url)
-        else:
-            cap = cv2.VideoCapture(0)  # Default webcam
+        # Get camera from database
+        camera = db.query(Camera).filter(Camera.id == camera_id).first()
         
-        if not cap.isOpened():
-            await websocket.close(code=1011, reason="Failed to open camera")
+        if not camera:
+            logger.error(f"Camera {camera_id} not found in database")
+            await websocket.close(code=1008, reason="Camera not found")
             return
         
+        # Check if camera stream is active in CameraService
+        if camera_id not in CameraService.active_streams:
+            logger.error(f"Camera {camera_id} stream not active")
+            await websocket.close(code=1011, reason="Camera stream not started")
+            return
+        
+        # Get the active VideoIngestor from CameraService
+        ingestor = CameraService.active_streams[camera_id]
         frame_count = 0
         
+        logger.info(f"Starting frame transmission for camera {camera_id}")
+        
         while True:
-            # Check if client is still connected
             try:
-                # Try to receive ping (non-blocking)
-                message = await asyncio.wait_for(websocket.receive_text(), timeout=0.001)
-                if message == "ping":
-                    await websocket.send_text("pong")
-            except asyncio.TimeoutError:
-                pass
-            except:
-                break
-            
-            # Read frame
-            ret, frame = cap.read()
-            if not ret:
-                # Loop video if it's a file
-                if camera.source_type == 'file':
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    continue
-                else:
-                    break
-            
-            # Resize frame for faster transmission
-            frame = cv2.resize(frame, (640, 480))
-            
-            # Process frame every 3rd frame to save CPU
-            detections = []
-            if frame_count % 3 == 0:
+                # Non-blocking check for client disconnect
                 try:
-                    results = frame_processor.process_frame(
-                        frame,
-                        camera_id,
-                        frame_count
-                    )
-                    detections = results.get('detections', [])
-                    
-                    # Draw detections on frame
-                    frame = frame_processor.draw_detections(frame, detections)
+                    message = await asyncio.wait_for(websocket.receive_text(), timeout=0.001)
+                    if message == "ping":
+                        await websocket.send_text("pong")
+                except asyncio.TimeoutError:
+                    pass
+                except:
+                    logger.info(f"Client disconnected from camera {camera_id}")
+                    break
+                
+                # Read frame from the EXISTING ingestor (no duplicate opening)
+                ret, frame = ingestor.read_frame()
+                
+                if not ret or frame is None:
+                    await asyncio.sleep(0.1)
+                    continue
+                
+                # Resize frame for transmission
+                frame = cv2.resize(frame, (640, 480))
+                
+                # Process every 3rd frame to reduce CPU load
+                detections = []
+                if frame_count % 3 == 0:
+                    try:
+                        results = frame_processor.process_frame(
+                            frame,
+                            camera_id,
+                            frame_count
+                        )
+                        detections = results.get('detections', [])
+                        
+                        # Draw detections on frame
+                        frame = frame_processor.draw_detections(frame, detections)
+                    except Exception as e:
+                        logger.error(f"Error processing frame: {e}")
+                
+                # Encode frame as JPEG
+                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                frame_base64 = base64.b64encode(buffer).decode('utf-8')
+                
+                # Send frame via WebSocket
+                try:
+                    await websocket.send_json({
+                        'type': 'frame',
+                        'camera_id': camera_id,
+                        'frame': frame_base64,
+                        'frame_count': frame_count,
+                        'detections': len(detections),
+                        'detection_data': detections[:5]  # Only first 5
+                    })
                 except Exception as e:
-                    logger.error(f"Error processing frame: {e}")
+                    logger.error(f"Failed to send frame: {e}")
+                    break
+                
+                frame_count += 1
+                
+                # Control frame rate (~15 FPS)
+                await asyncio.sleep(0.066)
             
-            # Encode frame as JPEG
-            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            frame_base64 = base64.b64encode(buffer).decode('utf-8')
-            
-            # Send frame and detection data
-            try:
-                await websocket.send_json({
-                    'type': 'frame',
-                    'camera_id': camera_id,
-                    'frame': frame_base64,
-                    'frame_count': frame_count,
-                    'detections': len(detections),
-                    'detection_data': detections[:5]  # Send only first 5 detections
-                })
-            except:
+            except Exception as e:
+                logger.error(f"Error in frame loop: {e}")
                 break
-            
-            frame_count += 1
-            
-            # Control frame rate (~15 FPS)
-            await asyncio.sleep(0.066)
     
     except WebSocketDisconnect:
-        logger.info(f"Client disconnected from camera {camera_id}")
+        logger.info(f"WebSocket disconnected for camera {camera_id}")
     except Exception as e:
-        logger.error(f"Error in WebSocket stream: {e}")
+        logger.error(f"WebSocket error for camera {camera_id}: {e}")
     finally:
-        if cap is not None:
-            cap.release()
-        manager.disconnect(websocket, camera_id)
+        db.close()
+        logger.info(f"WebSocket closed for camera {camera_id}")
 
 
 @router.get("/{camera_id}/snapshot")
-async def get_snapshot(camera_id: int, db: Session = Depends(get_db)):
+async def get_snapshot(camera_id: int):
     """
     Get a single snapshot from camera
     
     Returns base64-encoded JPEG image
     """
-    camera = CameraService.get_camera(db, camera_id)
-    if not camera:
-        return {"error": "Camera not found"}
+    db = SessionLocal()
     
     try:
-        # Open camera
-        if camera.source_type == 'webcam':
-            cap = cv2.VideoCapture(int(camera.source_url))
-        else:
-            cap = cv2.VideoCapture(camera.source_url)
+        camera = db.query(Camera).filter(Camera.id == camera_id).first()
         
-        if not cap.isOpened():
-            return {"error": "Failed to open camera"}
+        if not camera:
+            return {"error": "Camera not found"}
         
-        # Read frame
-        ret, frame = cap.read()
-        cap.release()
+        # Check if stream is active
+        if camera_id not in CameraService.active_streams:
+            return {"error": "Camera stream not active"}
         
-        if not ret:
+        ingestor = CameraService.active_streams[camera_id]
+        ret, frame = ingestor.read_frame()
+        
+        if not ret or frame is None:
             return {"error": "Failed to capture frame"}
         
         # Encode as JPEG
@@ -202,9 +162,11 @@ async def get_snapshot(camera_id: int, db: Session = Depends(get_db)):
         return {
             "camera_id": camera_id,
             "snapshot": frame_base64,
-            "timestamp": str(datetime.now())
+            "timestamp": datetime.now().isoformat()
         }
     
     except Exception as e:
         logger.error(f"Error capturing snapshot: {e}")
         return {"error": str(e)}
+    finally:
+        db.close()

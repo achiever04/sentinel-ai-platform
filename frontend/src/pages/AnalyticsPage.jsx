@@ -1,13 +1,16 @@
 // ============================================================================
-// frontend/src/pages/AnalyticsPage.jsx
+// frontend/src/pages/AnalyticsPage.jsx - FIXED VERSION
 // ============================================================================
 
 import React from 'react';
 import Sidebar from '../components/common/Sidebar';
 import Card from '../components/common/Card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useAuthStore } from '../store/authStore';
 
 export default function AnalyticsPage() {
+  const { user } = useAuthStore();
+  
   const data = [
     { hour: '00:00', detections: 5 },
     { hour: '04:00', detections: 3 },
@@ -19,7 +22,7 @@ export default function AnalyticsPage() {
   
   return (
     <div className="flex h-screen bg-gray-100">
-      <Sidebar role="operator" />
+      <Sidebar role={user?.role} />
       
       <div className="flex-1 overflow-auto">
         <div className="p-8">

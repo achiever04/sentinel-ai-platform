@@ -1,5 +1,5 @@
 # ============================================================================
-# backend/services/camera_service.py - Camera Management Service
+# backend/services/camera_service.py - FIXED VERSION
 # ============================================================================
 
 from sqlalchemy.orm import Session
@@ -15,7 +15,8 @@ logger = setup_logger(__name__)
 class CameraService:
     """Service for managing cameras and video sources"""
     
-    active_streams = {}  # camera_id -> VideoIngestor
+    # Class-level dictionary to store active streams
+    active_streams: Dict[int, VideoIngestor] = {}
     
     @staticmethod
     def create_camera(db: Session, camera_data: Dict) -> Camera:
@@ -85,22 +86,31 @@ class CameraService:
     
     @staticmethod
     def start_stream(camera_id: int, camera: Camera) -> bool:
-        """Start video stream for camera"""
+        """
+        Start video stream for camera
+        
+        IMPORTANT: This creates ONE VideoIngestor that will be used by WebSocket
+        """
         if camera_id in CameraService.active_streams:
             logger.warning(f"Stream already active for camera {camera_id}")
             return True
         
         try:
+            # Create VideoIngestor
             ingestor = VideoIngestor(
                 source=camera.source_url,
                 source_type=camera.source_type
             )
             
+            # Start the ingestor
             if ingestor.start():
+                # Store in class-level dictionary
                 CameraService.active_streams[camera_id] = ingestor
                 logger.info(f"Stream started for camera {camera_id}")
                 return True
-            return False
+            else:
+                logger.error(f"Failed to start ingestor for camera {camera_id}")
+                return False
             
         except Exception as e:
             logger.error(f"Failed to start stream for camera {camera_id}: {e}")
@@ -110,9 +120,12 @@ class CameraService:
     def stop_stream(camera_id: int):
         """Stop video stream for camera"""
         if camera_id in CameraService.active_streams:
-            CameraService.active_streams[camera_id].stop()
-            del CameraService.active_streams[camera_id]
-            logger.info(f"Stream stopped for camera {camera_id}")
+            try:
+                CameraService.active_streams[camera_id].stop()
+                del CameraService.active_streams[camera_id]
+                logger.info(f"Stream stopped for camera {camera_id}")
+            except Exception as e:
+                logger.error(f"Error stopping stream for camera {camera_id}: {e}")
     
     @staticmethod
     def get_stream_status(camera_id: int) -> Dict:

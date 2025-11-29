@@ -1,12 +1,12 @@
 // ============================================================================
-// frontend/src/App.jsx - FIXED VERSION with Safe Imports
+// frontend/src/App.jsx - FINAL FIXED VERSION
 // ============================================================================
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 
-// EXISTING pages (these work)
+// Import all pages directly (no try-catch)
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
 import OperatorDashboard from './pages/OperatorDashboard';
@@ -15,17 +15,8 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import FederatedPage from './pages/FederatedPage';
 import SettingsPage from './pages/SettingsPage';
 import WatchlistPage from './pages/WatchlistPage';
-
-// NEW pages - with fallback if they don't exist yet
-let CamerasPage, AlertsPage;
-try {
-  CamerasPage = require('./pages/CamerasPage').default;
-  AlertsPage = require('./pages/AlertsPage').default;
-} catch (e) {
-  // Fallback components if files don't exist
-  CamerasPage = () => <div>Cameras page coming soon...</div>;
-  AlertsPage = () => <div>Alerts page coming soon...</div>;
-}
+import CamerasPage from './pages/CamerasPage';
+import AlertsPage from './pages/AlertsPage';
 
 function PrivateRoute({ children, adminOnly = false }) {
   const { isAuthenticated, user } = useAuthStore();
@@ -49,7 +40,7 @@ function App() {
           {/* Public Route */}
           <Route path="/login" element={<Login />} />
           
-          {/* Admin Routes */}
+          {/* Admin Routes - ALWAYS pass role="admin" */}
           <Route
             path="/admin"
             element={
@@ -91,7 +82,7 @@ function App() {
             }
           />
           
-          {/* Operator Routes */}
+          {/* Operator Routes - ALWAYS pass role="operator" */}
           <Route
             path="/operator"
             element={
@@ -135,7 +126,7 @@ function App() {
             }
           />
           
-          {/* Redirect root to login */}
+          {/* Redirect root */}
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </div>

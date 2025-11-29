@@ -1,5 +1,5 @@
 // ============================================================================
-// frontend/src/pages/WatchlistPage.jsx
+// frontend/src/pages/WatchlistPage.jsx - FIXED VERSION
 // ============================================================================
 
 import React, { useState } from 'react';
@@ -7,13 +7,15 @@ import Sidebar from '../components/common/Sidebar';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import { Users, UserX, Search } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
 
 export default function WatchlistPage() {
   const [activeTab, setActiveTab] = useState('criminals');
+  const { user } = useAuthStore();
   
   return (
     <div className="flex h-screen bg-gray-100">
-      <Sidebar role="operator" />
+      <Sidebar role={user?.role} />
       
       <div className="flex-1 overflow-auto">
         <div className="p-8">
