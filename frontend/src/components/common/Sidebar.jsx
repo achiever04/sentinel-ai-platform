@@ -1,5 +1,5 @@
 // ============================================================================
-// frontend/src/components/common/Sidebar.jsx - FIXED with stable role
+// frontend/src/components/common/Sidebar.jsx - COMPLETE FIXED VERSION
 // ============================================================================
 
 import React from 'react';
@@ -15,11 +15,13 @@ import {
   LogOut
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useCameraStore } from '../../store/cameraStore';
 
 export default function Sidebar({ role }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuthStore();
+  const { stopAllCameras } = useCameraStore();
   
   // CRITICAL: Use prop role first, fallback to user role
   const currentRole = role || user?.role || 'operator';
@@ -47,7 +49,17 @@ export default function Sidebar({ role }) {
   
   const isActive = (href) => location.pathname === href;
   
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // Stop all cameras before logout
+      console.log('Stopping all cameras before logout...');
+      await stopAllCameras();
+      console.log('All cameras stopped');
+    } catch (error) {
+      console.error('Error stopping cameras:', error);
+    }
+    
+    // Logout and redirect
     logout();
     navigate('/login');
   };
@@ -66,6 +78,11 @@ export default function Sidebar({ role }) {
         <div className="text-sm font-medium">
           {currentRole === 'admin' ? 'Administrator' : 'Operator'}
         </div>
+        {user?.username && (
+          <div className="text-xs text-gray-500 mt-1">
+            @{user.username}
+          </div>
+        )}
       </div>
       
       {/* Navigation */}

@@ -82,8 +82,16 @@ async def start_camera_stream(
 @router.post("/{camera_id}/stop")
 async def stop_camera_stream(
     camera_id: int,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """Stop camera stream"""
     CameraService.stop_stream(camera_id)
+    
+    # Update camera status in database
+    camera = CameraService.get_camera(db, camera_id)
+    if camera:
+        camera.status = 'offline'
+        db.commit()
+    
     return {"success": True, "message": "Stream stopped"}

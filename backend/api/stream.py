@@ -93,6 +93,7 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: int):
                         frame = frame_processor.draw_detections(frame, detections)
                     except Exception as e:
                         logger.error(f"Error processing frame: {e}")
+                        # Continue anyway - send raw frame
                 
                 # Encode frame as JPEG
                 _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])

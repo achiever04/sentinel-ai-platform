@@ -1,5 +1,5 @@
 # ============================================================================
-# backend/ml/person_tracker.py - Cross-Camera Person Tracking
+# backend/ml/person_tracker.py - FIXED for Dict Bbox Format
 # ============================================================================
 
 import numpy as np
@@ -42,6 +42,45 @@ class PersonTracker:
         
         logger.info("PersonTracker initialized")
     
+    def _extract_bbox_from_detection(self, detection: Dict) -> Tuple[int, int, int, int]:
+        """
+        Extract bbox as (x, y, w, h) from detection dict
+        
+        Handles both dict and tuple formats
+        """
+        bbox = detection.get('bbox', {})
+        
+        if isinstance(bbox, dict):
+            # Dict format: {'top', 'right', 'bottom', 'left'}
+            left = int(bbox.get('left', 0))
+            top = int(bbox.get('top', 0))
+            right = int(bbox.get('right', 0))
+            bottom = int(bbox.get('bottom', 0))
+            
+            # Convert to (x, y, w, h)
+            x = left
+            y = top
+            w = right - left
+            h = bottom - top
+            
+            return (x, y, w, h)
+        else:
+            # Tuple format: assume it's already (x, y, w, h) or (top, right, bottom, left)
+            try:
+                if len(bbox) == 4:
+                    # Try to interpret as (top, right, bottom, left)
+                    top, right, bottom, left = bbox
+                    x = int(left)
+                    y = int(top)
+                    w = int(right - left)
+                    h = int(bottom - top)
+                    return (x, y, w, h)
+            except:
+                pass
+            
+            # Fallback
+            return (0, 0, 100, 100)
+    
     def update(
         self,
         camera_id: int,
@@ -54,7 +93,7 @@ class PersonTracker:
         Args:
             camera_id: Camera identifier
             detections: List of detection dictionaries with:
-                - bbox: (x, y, w, h)
+                - bbox: dict or tuple with bbox coordinates
                 - face_embedding: feature vector
                 - body_embedding: optional body feature vector
             frame_id: Current frame number
@@ -67,7 +106,7 @@ class PersonTracker:
         for det in detections:
             emb = det.get('face_embedding')
             if emb is not None:
-                detection_embeddings.append(emb)
+                detection_embeddings.append(np.array(emb))
             else:
                 detection_embeddings.append(np.zeros(128))  # Placeholder
         
@@ -87,18 +126,22 @@ class PersonTracker:
         for i, det in enumerate(detections):
             track_idx = assignments[i]
             
+            # Extract bbox in (x, y, w, h) format
+            bbox_tuple = self._extract_bbox_from_detection(det)
+            
             if track_idx == -1:
                 # New track
                 person_id = self._create_new_track(
                     camera_id,
                     det,
                     detection_embeddings[i],
-                    frame_id
+                    frame_id,
+                    bbox_tuple
                 )
             else:
                 # Update existing track
                 person_id = self.camera_tracks[camera_id][track_idx]['person_id']
-                self._update_track(person_id, det, detection_embeddings[i], frame_id)
+                self._update_track(person_id, det, detection_embeddings[i], frame_id, bbox_tuple)
             
             # Add person_id to detection
             det['person_id'] = f"Person_{person_id:04d}"
@@ -169,7 +212,8 @@ class PersonTracker:
         camera_id: int,
         detection: Dict,
         embedding: np.ndarray,
-        frame_id: int
+        frame_id: int,
+        bbox: Tuple[int, int, int, int]
     ) -> int:
         """Create new track for unmatched detection"""
         person_id = self.next_person_id
@@ -183,7 +227,7 @@ class PersonTracker:
             'first_seen': frame_id,
             'detection_count': 1,
             'cameras_seen': {camera_id},
-            'last_bbox': detection['bbox']
+            'last_bbox': bbox
         }
         
         self.tracks[person_id] = track_info
@@ -203,14 +247,15 @@ class PersonTracker:
         person_id: int,
         detection: Dict,
         embedding: np.ndarray,
-        frame_id: int
+        frame_id: int,
+        bbox: Tuple[int, int, int, int]
     ):
         """Update existing track with new detection"""
         if person_id in self.tracks:
             track = self.tracks[person_id]
             track['last_seen'] = frame_id
             track['detection_count'] += 1
-            track['last_bbox'] = detection['bbox']
+            track['last_bbox'] = bbox
             
             # Update embedding (moving average for robustness)
             alpha = 0.3  # Weight for new embedding
