@@ -20,6 +20,33 @@ logger = setup_logger(__name__)
 frame_processor = FrameProcessor()
 
 
+def convert_numpy_types(obj):
+    """
+    Convert NumPy types to Python native types for JSON serialization
+    
+    CRITICAL FIX: Without this, WebSocket crashes with:
+    "Object of type bool_ is not JSON serializable"
+    
+    DO NOT REMOVE THIS FUNCTION!
+    """
+    import numpy as np
+    
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
+
+
 @router.websocket("/ws/{camera_id}")
 async def websocket_endpoint(websocket: WebSocket, camera_id: int):
     """
@@ -85,19 +112,25 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: int):
                         results = frame_processor.process_frame(
                             frame,
                             camera_id,
-                            frame_count
+                            frame_id=frame_count  # FIXED: was 'frame_count', should be 'frame_id'
                         )
                         detections = results.get('detections', [])
                         
-                        # Draw detections on frame
+                #Draw detections on frame
                         frame = frame_processor.draw_detections(frame, detections)
                     except Exception as e:
-                        logger.error(f"Error processing frame: {e}")
+                        logger.error(f"[ERROR] Error processing frame {frame_count}: {type(e).__name__}: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
                         # Continue anyway - send raw frame
                 
                 # Encode frame as JPEG
                 _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 frame_base64 = base64.b64encode(buffer).decode('utf-8')
+                
+                # CRITICAL: Convert NumPy types to Python types before JSON serialization
+                # This prevents "Object of type bool_ is not JSON serializable" error
+                safe_detections = convert_numpy_types(detections[:5])
                 
                 # Send frame via WebSocket
                 try:
@@ -107,10 +140,17 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: int):
                         'frame': frame_base64,
                         'frame_count': frame_count,
                         'detections': len(detections),
-                        'detection_data': detections[:5]  # Only first 5
+                        'detection_data': safe_detections  # Now JSON-safe
                     })
+                    
+                    # Log every 30th frame to confirm transmission
+                    if frame_count % 30 == 0:
+                        logger.info(f"[OK] Sent {frame_count} frames for camera {camera_id}")
+                        
                 except Exception as e:
-                    logger.error(f"Failed to send frame: {e}")
+                    logger.error(f"[ERROR] CRITICAL: Failed to send frame {frame_count}: {type(e).__name__}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
                     break
                 
                 frame_count += 1

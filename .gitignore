@@ -97,3 +97,4 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+frontend/package-lock.json
